@@ -5,35 +5,11 @@ var cors = require("cors");
 const app = express();
 const bodyParser = require("body-parser");
 const path = require("path");
-const https = require("https")
 var server = http.createServer(app);
 var io = require("socket.io")(server);
-var httpsServer = null;
 app.use(cors());
 app.use(bodyParser.json());
 
-if (process.env.NODE_ENV === "production") {
-  const privateKey = fs.readFileSync(
-    "/etc/letsencrypt/live/lazarus.wschweigert.com/privkey.pem",
-    "utf8"
-  );
-  const certificate = fs.readFileSync(
-    "/etc/letsencrypt/live/lazarus.wschweigert.com/cert.pem",
-    "utf8"
-  );
-  const ca = fs.readFileSync(
-    "/etc/letsencrypt/live/lazarus.wschweigert.com/chain.pem",
-    "utf8"
-  );
-  const credentials = {
-    key: privateKey,
-    cert: certificate,
-    ca: ca,
-  };
-  httpsServer = https.createServer(credentials, app);
-
-  
-}
 app.use(express.static(__dirname + "/build"));
   app.get("*", (req, res, next) => {
     res.sendFile(path.join(__dirname + "/build/index.html"));
@@ -138,8 +114,4 @@ io.on("connection", function (socket) {
 server.listen(app.get("port"), () => {
   console.log("listening on", app.get("port"));
 });
-if (process.env.NODE_ENV == "production") {
-  httpsServer.listen(443, () => {
-    console.log("HTTPS Server running on port 443");
-  });
-}
+
