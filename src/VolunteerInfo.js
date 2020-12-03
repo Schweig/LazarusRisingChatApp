@@ -93,7 +93,7 @@ const useStyles = makeStyles((theme) => ({
   },
 }));
 
-export default function VolunteerInfo() {
+export default function VolunteerInfo(props) {
   const classes = useStyles();
   const [value, setValue] = React.useState(0);
   const editorRef = useRef();
@@ -105,7 +105,7 @@ export default function VolunteerInfo() {
     checkedA: true,
     checkedB: true,
     panel: 0,
-    content: ""
+    content: localStorage.getItem(props.url)
   });
 
   const getContent = (tab) => {
@@ -393,6 +393,7 @@ export default function VolunteerInfo() {
           }
           }
           onChange={(content)=>{
+            localStorage.setItem(props.url,content)
             setState({...state, content:content})
           }
           }

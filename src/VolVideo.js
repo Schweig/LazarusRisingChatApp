@@ -702,7 +702,7 @@ class VolVideo extends Component {
 							</Row>
 						</div>
 						<div style={{width:"40%",height:"100%",backgroundColor:"#ff0000",marginLeft:"60%"}}>
-							<VolunteerInfo/>
+							<VolunteerInfo url={this.props.match.params.url}/>
 
 						</div>
 						</div>
