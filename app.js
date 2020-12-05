@@ -104,6 +104,7 @@ io.on("connection", function (socket) {
 
           if (connections[key].length === 0) {
             delete connections[key];
+            delete messages[key]
           }
         }
       }

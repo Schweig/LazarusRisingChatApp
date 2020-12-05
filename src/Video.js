@@ -14,6 +14,7 @@ import StopScreenShareIcon from '@material-ui/icons/StopScreenShare';
 import CallEndIcon from '@material-ui/icons/CallEnd';
 import ChatIcon from '@material-ui/icons/Chat';
 import VolunteerInfo from './VolunteerInfo';
+import Tooltip from '@material-ui/core/Tooltip'
 import { message } from 'antd';
 import 'antd/dist/antd.css';
 
@@ -60,11 +61,14 @@ class Video extends Component {
 			newmessages: 0,
 			askForUsername: true,
 			username: faker.internet.userName(),
+			numUsers:0
 		}
 		connections = {}
 
 		this.addMessage = this.addMessage.bind(this)
-
+		this.userJoined = this.userJoined.bind(this)
+		this.userLeft = this.userLeft.bind(this)
+		
 		this.getPermissions()
 	}
 
@@ -105,6 +109,168 @@ class Video extends Component {
 				})
 				.then((stream) => {})
 				.catch((e) => console.log(e))
+		}
+	}
+	userJoined = (id,clients) => {
+		var currentThis = this
+		clients.forEach(function (socketListId) {
+			currentThis.setState((prevState)=>{
+				return {numUsers: prevState.numUsers + 1}
+			})
+			connections[socketListId] = undefined
+			if (connections[socketListId] === undefined) {
+				console.log("new entry")
+				connections[socketListId] = new RTCPeerConnection(peerConnectionConfig);
+				//Wait for their ice candidate       
+				connections[socketListId].onicecandidate = function (event) {
+					if (event.candidate != null) {
+						socket.emit('signal', socketListId, JSON.stringify({ 'ice': event.candidate }));
+					}
+				}
+
+				//Wait for their video stream
+				connections[socketListId].onaddstream = (event) => {
+
+					// TODO mute button, full screen button
+
+					var searchVidep = document.querySelector(`[data-socket="${socketListId}"]`);
+					if (searchVidep !== null) { // se non faccio questo check crea un quadrato vuoto inutile
+						searchVidep.srcObject = event.stream
+					} else {
+						elms = clients.length
+						var main = document.getElementById('main')
+						var videos = main.querySelectorAll("video")
+
+						var widthMain = main.offsetWidth
+
+						var minWidth = "30%"
+						if ((widthMain * 30 / 100) < 300) {
+							minWidth = "300px"
+						}
+
+						var minHeight = "40%"
+
+						var height = String(100 / elms) + "%"
+						var width = ""
+						if (elms === 1 || elms === 2) {
+							width = "100%"
+							height = "100%"
+						} else if (elms === 3 || elms === 4) {
+							width = "35%"
+							height = "50%"
+						} else {
+							width = String(100 / elms) + "%"
+						}
+
+
+						for (let a = 0; a < videos.length; ++a) {
+							videos[a].style.minWidth = minWidth
+							videos[a].style.minHeight = minHeight
+							videos[a].style.setProperty("width", width)
+							videos[a].style.setProperty("height", height)
+						}
+
+						var video = document.createElement('video')
+						video.style.minWidth = minWidth
+						video.style.minHeight = minHeight
+						video.style.maxHeight = "100%"
+						video.style.setProperty("width", width)
+						video.style.setProperty("height", height)
+						video.style.margin = "10px"
+						//video.style.borderStyle = "solid"
+						//video.style.borderColor = "#bdbdbd"
+						//video.style.objectFit = "fill"
+
+						video.setAttribute('data-socket', socketListId);
+						video.srcObject = event.stream
+						video.autoplay = true;
+						// video.muted       = true;
+						video.playsinline = true;
+
+						main.appendChild(video)
+					}
+				}
+
+				//Add the local video stream
+				if (window.localStream !== undefined && window.localStream !== null) {
+					connections[socketListId].addStream(window.localStream);
+				} else {
+					let silence = () => {
+						let ctx = new AudioContext()
+						let oscillator = ctx.createOscillator()
+						let dst = oscillator.connect(ctx.createMediaStreamDestination())
+						oscillator.start()
+						ctx.resume()
+						return Object.assign(dst.stream.getAudioTracks()[0], { enabled: false });
+					}
+
+					let black = ({ width = 640, height = 480 } = {}) => {
+						let canvas = Object.assign(document.createElement("canvas"), { width, height });
+						canvas.getContext('2d').fillRect(0, 0, width, height);
+						let stream = canvas.captureStream();
+						return Object.assign(stream.getVideoTracks()[0], { enabled: false });
+					}
+
+					let blackSilence = (...args) => new MediaStream([black(...args), silence()]);
+					window.localStream = blackSilence()
+					connections[socketListId].addStream(window.localStream);
+				}
+			}
+		});
+
+		if (id !== socketId) {
+			// Create an offer to connect with your local description
+			connections[id].createOffer().then((description) => {
+				connections[id].setLocalDescription(description)
+					.then(() => {
+						socket.emit('signal', id, JSON.stringify({ 'sdp': connections[id].localDescription }));
+					})
+					.catch(e => console.log(e));
+			});
+		}
+	}
+
+	userLeft = (id) => {
+		this.setState((prevState)=>{
+			return {numUsers: prevState.numUsers - 1}
+		})
+		
+		var video = document.querySelector(`[data-socket="${id}"]`);
+		if (video !== null) {
+			elms--
+			video.parentNode.removeChild(video);
+
+			var main = document.getElementById('main')
+			var videos = main.querySelectorAll("video")
+
+			var widthMain = main.offsetWidth
+
+			var minWidth = "30%"
+			if ((widthMain * 30 / 100) < 300) {
+				minWidth = "300px"
+			}
+
+			var minHeight = "40%"
+
+			var height = String(100 / elms) + "%"
+			var width = ""
+			if (elms === 1 || elms === 2) {
+				width = "45%"
+				height = "100%"
+			} else if (elms === 3 || elms === 4) {
+				width = "35%"
+				height = "50%"
+			} else {
+				width = String(100 / elms) + "%"
+			}
+
+
+			for (let a = 0; a < videos.length; ++a) {
+				videos[a].style.minWidth = minWidth
+				videos[a].style.minHeight = minHeight
+				videos[a].style.setProperty("width", width)
+				videos[a].style.setProperty("height", height)
+			}
 		}
 	}
 
@@ -317,164 +483,11 @@ class Video extends Component {
 
 			socket.on('chat-message', this.addMessage)
 
-			socket.on('user-left', function (id) {
-				var video = document.querySelector(`[data-socket="${id}"]`);
-				if (video !== null) {
-					elms--
-					video.parentNode.removeChild(video);
+			socket.on('user-left', this.userLeft);
 
-					var main = document.getElementById('main')
-					var videos = main.querySelectorAll("video")
-
-					var widthMain = main.offsetWidth
-
-					var minWidth = "30%"
-					if ((widthMain * 30 / 100) < 300) {
-						minWidth = "300px"
-					}
-
-					var minHeight = "40%"
-
-					var height = String(100 / elms) + "%"
-					var width = ""
-					if (elms === 1 || elms === 2) {
-						width = "45%"
-						height = "100%"
-					} else if (elms === 3 || elms === 4) {
-						width = "35%"
-						height = "50%"
-					} else {
-						width = String(100 / elms) + "%"
-					}
-
-
-					for (let a = 0; a < videos.length; ++a) {
-						videos[a].style.minWidth = minWidth
-						videos[a].style.minHeight = minHeight
-						videos[a].style.setProperty("width", width)
-						videos[a].style.setProperty("height", height)
-					}
-				}
-			});
-
-			socket.on('user-joined', function (id, clients) {
-				console.log("joined")
-
-				clients.forEach(function (socketListId) {
-					connections[socketListId] = undefined
-					if (connections[socketListId] === undefined) {
-						console.log("new entry")
-						connections[socketListId] = new RTCPeerConnection(peerConnectionConfig);
-						//Wait for their ice candidate       
-						connections[socketListId].onicecandidate = function (event) {
-							if (event.candidate != null) {
-								socket.emit('signal', socketListId, JSON.stringify({ 'ice': event.candidate }));
-							}
-						}
-
-						//Wait for their video stream
-						connections[socketListId].onaddstream = (event) => {
-
-							// TODO mute button, full screen button
-
-							var searchVidep = document.querySelector(`[data-socket="${socketListId}"]`);
-							if (searchVidep !== null) { // se non faccio questo check crea un quadrato vuoto inutile
-								searchVidep.srcObject = event.stream
-							} else {
-								elms = clients.length
-								var main = document.getElementById('main')
-								var videos = main.querySelectorAll("video")
-
-								var widthMain = main.offsetWidth
-
-								var minWidth = "30%"
-								if ((widthMain * 30 / 100) < 300) {
-									minWidth = "300px"
-								}
-
-								var minHeight = "40%"
-
-								var height = String(100 / elms) + "%"
-								var width = ""
-								if (elms === 1 || elms === 2) {
-									width = "45%"
-									height = "100%"
-								} else if (elms === 3 || elms === 4) {
-									width = "35%"
-									height = "50%"
-								} else {
-									width = String(100 / elms) + "%"
-								}
-
-
-								for (let a = 0; a < videos.length; ++a) {
-									videos[a].style.minWidth = minWidth
-									videos[a].style.minHeight = minHeight
-									videos[a].style.setProperty("width", width)
-									videos[a].style.setProperty("height", height)
-								}
-
-								var video = document.createElement('video')
-								video.style.minWidth = minWidth
-								video.style.minHeight = minHeight
-								video.style.maxHeight = "100%"
-								video.style.setProperty("width", width)
-								video.style.setProperty("height", height)
-								video.style.margin = "10px"
-								video.style.borderStyle = "solid"
-								video.style.borderColor = "#bdbdbd"
-								video.style.objectFit = "fill"
-
-								video.setAttribute('data-socket', socketListId);
-								video.srcObject = event.stream
-								video.autoplay = true;
-								// video.muted       = true;
-								video.playsinline = true;
-
-								main.appendChild(video)
-							}
-						}
-
-						//Add the local video stream
-						if (window.localStream !== undefined && window.localStream !== null) {
-							connections[socketListId].addStream(window.localStream);
-						} else {
-							let silence = () => {
-								let ctx = new AudioContext()
-								let oscillator = ctx.createOscillator()
-								let dst = oscillator.connect(ctx.createMediaStreamDestination())
-								oscillator.start()
-								ctx.resume()
-								return Object.assign(dst.stream.getAudioTracks()[0], { enabled: false });
-							}
-
-							let black = ({ width = 640, height = 480 } = {}) => {
-								let canvas = Object.assign(document.createElement("canvas"), { width, height });
-								canvas.getContext('2d').fillRect(0, 0, width, height);
-								let stream = canvas.captureStream();
-								return Object.assign(stream.getVideoTracks()[0], { enabled: false });
-							}
-
-							let blackSilence = (...args) => new MediaStream([black(...args), silence()]);
-							window.localStream = blackSilence()
-							connections[socketListId].addStream(window.localStream);
-						}
-					}
-				});
-
-				if (id !== socketId) {
-					// Create an offer to connect with your local description
-					connections[id].createOffer().then((description) => {
-						connections[id].setLocalDescription(description)
-							.then(() => {
-								socket.emit('signal', id, JSON.stringify({ 'sdp': connections[id].localDescription }));
-							})
-							.catch(e => console.log(e));
-					});
-				}
-			});
-		})
-	}
+			socket.on('user-joined', this.userJoined);
+	})
+}
 
 
 	handleVideo = () => {
@@ -637,26 +650,26 @@ class Video extends Component {
 					<div>
 						<div className="btn-down" style={{ backgroundColor: "whitesmoke", color: "whitesmoke", textAlign: "center" }}>
 							<IconButton style={{ color: "#424242" }} onClick={this.handleVideo}>
-								{(this.state.video === true) ? <VideocamIcon /> : <VideocamOffIcon />}
+								{(this.state.video === true) ? <Tooltip title="Turn Off Video" ><VideocamIcon /></Tooltip> : <Tooltip title="Turn On Video"><VideocamOffIcon /></Tooltip>}
 							</IconButton>
 
 							<IconButton style={{ color: "#f44336" }} onClick={this.handleEndCall}>
-								<CallEndIcon />
+								<Tooltip title="End Video Call"><CallEndIcon /></Tooltip>
 							</IconButton>
 
 							<IconButton style={{ color: "#424242" }} onClick={this.handleAudio}>
-								{this.state.audio === true ? <MicIcon /> : <MicOffIcon />}
+								{this.state.audio === true ? <Tooltip title="Turn off Microphone"><MicIcon /></Tooltip> : <Tooltip title="Turn on Microphone"><MicOffIcon /></Tooltip>}
 							</IconButton>
 
 							{this.state.screenAvailable === true ?
 								<IconButton style={{ color: "#424242" }} onClick={this.handleScreen}>
-									{this.state.screen === true ? <ScreenShareIcon /> : <StopScreenShareIcon />}
+									{this.state.screen === true ? <Tooltip title="Share Screen"><ScreenShareIcon /></Tooltip>  : <Tooltip title="Stop Sharing Screen"><StopScreenShareIcon /></Tooltip> }
 								</IconButton>
 								: null}
 
 							<Badge badgeContent={this.state.newmessages} max={999} color="secondary" onClick={this.openChat}>
 								<IconButton style={{ color: "#424242" }} onClick={this.openChat}>
-									<ChatIcon />
+								<Tooltip title="Chat Room"><ChatIcon /></Tooltip> 
 								</IconButton>
 							</Badge>
 						</div>
@@ -680,21 +693,28 @@ class Video extends Component {
 						</Modal>
 
 						<div className="container">
-						<video id="my-video" ref={this.localVideoref} autoPlay muted style={{
+							<div style={{
 									position:"absolute",
+									bottom:"8px",
+									right:"16px"
+							}}>
+							<p>{this.state.username}</p>
+						<video id="my-video" ref={this.localVideoref} autoPlay muted style={{
 									borderStyle: "solid",
 									borderColor: "#bdbdbd",
 									margin: "10px",
 									objectFit: "fill",
-									height: "280px",
-									width: "350px",
-									bottom:"8px",
-									right:"16px"
+									height: "224px",
+									width: "280px",
+
 								}}></video>
+								</div>
 							<div>
 
 							<Row id="main" className="flex-container" style={{ margin: 0, padding: 0 }}>
-								
+								{this.state.numUsers === 1 && 
+									<div>Volunteer not here yet</div>
+								}
 							</Row>
 						</div>
 						</div>
